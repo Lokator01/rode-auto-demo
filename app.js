@@ -8,7 +8,7 @@ import {
   escapeHtml,
   money,
   introLoader
-} from './render.js?v=63a9c8190f42';
+} from './render.js?v=2ff4a59da723';
 let loaderDismissTimer;
 history.scrollRestoration = 'manual';
 const data = await fetch('/rode-auto-demo/content/catalog.json')
@@ -97,7 +97,7 @@ async function mountScene() {
   sceneController?.dispose();
   sceneController = null;
   try {
-    const { createCarScene } = await import('./scene.js?v=63a9c8190f42');
+    const { createCarScene } = await import('./scene.js?v=2ff4a59da723');
     if (generation !== sceneGeneration || !element.isConnected) return;
     const controller = await createCarScene(element, {
       opened: !playIntro,
@@ -239,11 +239,11 @@ function typeHeroCopy(copy, initialDelay = 250) {
   const items = [...copy.querySelectorAll('.hero-intro, .hero-features li')];
   if (!items.length) return () => {};
   const texts = items.map((item) => item.textContent);
-  const summary = copy.querySelector('.hero-description summary');
+  const callButton = copy.querySelector('.hero-actions [data-enquire]');
   let pulse;
   const stopPulse = () => {
     pulse?.cancel();
-    summary?.classList.remove('is-attention');
+    callButton?.classList.remove('is-attention');
   };
   const spans = items.map((item, index) => {
     if (item.matches('li')) item.setAttribute('aria-label', texts[index]);
@@ -286,32 +286,31 @@ function typeHeroCopy(copy, initialDelay = 250) {
   function finish(completed = false) {
     cancelAnimationFrame(frame);
     stopPulse();
-    summary?.removeEventListener('click', stopPulse);
-    summary?.removeEventListener('focus', stopPulse);
-    summary?.removeEventListener('pointerenter', stopPulse);
+    callButton?.removeEventListener('click', stopPulse);
+    callButton?.removeEventListener('focus', stopPulse);
+    callButton?.removeEventListener('pointerenter', stopPulse);
     items.forEach((item, index) => {
       item.classList.remove('is-typing-pending', 'is-typing-active', 'is-typewriter');
       item.textContent = texts[index];
     });
-    if (completed && summary && copy.isConnected && !reducedMotion.matches && !summary.parentElement.open) {
-      pulse = summary.animate(
+    if (completed && callButton && copy.isConnected && !reducedMotion.matches) {
+      pulse = callButton.animate(
         [
-          { color: 'var(--gold)', backgroundColor: 'rgba(197,164,106,0)', textShadow: '0 0 0 rgba(232,193,110,0)' },
+          { backgroundColor: '#bfa174', boxShadow: '0 0 0 rgba(232,193,110,0)' },
           {
-            color: '#f2ce83',
-            backgroundColor: 'rgba(197,164,106,.09)',
-            textShadow: '0 0 12px rgba(232,193,110,.35)',
+            backgroundColor: '#edc979',
+            boxShadow: '0 0 20px rgba(232,193,110,.35)',
             offset: 0.5
           },
-          { color: 'var(--gold)', backgroundColor: 'rgba(197,164,106,0)', textShadow: '0 0 0 rgba(232,193,110,0)' }
+          { backgroundColor: '#bfa174', boxShadow: '0 0 0 rgba(232,193,110,0)' }
         ],
-        { duration: 1400, iterations: 2, easing: 'ease-in-out' }
+        { duration: 900, iterations: 2, easing: 'ease-in-out' }
       );
-      summary.classList.add('is-attention');
-      pulse.onfinish = () => summary.classList.remove('is-attention');
-      summary.addEventListener('click', stopPulse);
-      summary.addEventListener('focus', stopPulse);
-      summary.addEventListener('pointerenter', stopPulse);
+      callButton.classList.add('is-attention');
+      pulse.onfinish = () => callButton.classList.remove('is-attention');
+      callButton.addEventListener('click', stopPulse);
+      callButton.addEventListener('focus', stopPulse);
+      callButton.addEventListener('pointerenter', stopPulse);
     }
   }
   frame = requestAnimationFrame(tick);
