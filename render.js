@@ -1,3 +1,5 @@
+import { privacyPage, consentPage } from './legal.js';
+
 export const escapeHtml = (value) =>
   String(value ?? '').replace(
     /[&<>"']/g,
@@ -69,7 +71,7 @@ export function leadForm(data, interestId = '', location = 'footer') {
     <label class="form-wide" for="${prefix}-comment">Комментарий <span>необязательно</span><textarea id="${prefix}-comment" name="comment" maxlength="1000" rows="2" placeholder="Пожелания к автомобилю или удобное время для звонка"></textarea></label></div>
     <p class="selected-interest" data-interest-summary>${selected ? e(selected.name) + ' · ' + money(selected.priceRub) : 'Поможем определиться с выбором.'}</p>
     <div class="form-honey" aria-hidden="true"><label>Ваш сайт<input name="website" tabindex="-1" autocomplete="off"></label></div>
-    <label class="consent-label"><input type="checkbox" name="consent" required><span>Я согласен на обработку персональных данных для ответа на заявку и ознакомлен с <a href="/rode-auto-demo/privacy" target="_blank">политикой обработки данных</a>.</span></label>
+    <label class="consent-label"><input type="checkbox" name="consent" required><span>Даю <a href="/rode-auto-demo/consent" target="_blank" rel="noopener">отдельное согласие на обработку данных заявки</a>.</span></label><p class="preview-note"><a href="/rode-auto-demo/privacy" target="_blank" rel="noopener">Информация о конфиденциальности</a>. Локальную форму проверяйте только на вымышленных контактах.</p>
     <div class="form-submit-row"><button type="submit" class="button button-gold">Заказать звонок</button><span>Мы свяжемся с вами<br>по указанному номеру</span></div>
     <p class="form-status" role="status" aria-live="polite"></p><p class="preview-note">Демоверсия для просмотра. Заявки не принимаются и не отправляются.</p></fieldset></form>`;
 }
@@ -110,9 +112,6 @@ function about(data) {
     <section class="company-directions"><div class="wrap"><p class="eyebrow">Что мы делаем</p><h2>ОДНО МЕСТО. БОЛЬШЕ ВОЗМОЖНОСТЕЙ.</h2><div class="company-card-grid">${copy.directions.map((item, index) => `<article><span class="company-number">0${index + 1}</span><h3>${e(item.title)}</h3><p>${e(item.text)}</p><a class="underlined-link" href="${index === 0 ? '/rode-auto-demo/cars' : index === 1 ? '/rode-auto-demo/services' : '/rode-auto-demo/contacts'}">${index === 0 ? 'Выбрать автомобиль' : index === 1 ? 'Посмотреть услуги' : 'Уточнить детали'}</a></article>`).join('')}</div></div></section>
     <section class="company-process wrap"><p class="eyebrow">Как начать</p><h2>С ПРОСТОГО РАЗГОВОРА.</h2><div class="company-card-grid">${copy.steps.map((item, index) => `<article><span class="company-number">0${index + 1}</span><h3>${e(item.title)}</h3><p>${e(item.text)}</p></article>`).join('')}</div><div class="company-contact"><p>Обсудим ваш автомобиль или запись в сервис.</p><a href="${company.phoneHref}">${e(company.phone)}</a></div></section>`;
 }
-function privacy(data) {
-  return `<section class="legal-page wrap"><p class="eyebrow">Локальная тестовая версия</p><h1>Обработка данных заявки</h1><p class="legal-warning">Проект текста для прототипа. До публичного запуска оператор должен утвердить политику, основания обработки и срок хранения. Это демонстрация дизайна; приём заявок отключён.</p><h2>Кому адресована заявка</h2><p>${e(data.company.legalName)}, ИНН ${e(data.company.inn)}. Контакт: ${e(data.company.email)}.</p><h2>Какие сведения используются</h2><p>Имя, телефон, выбранный автомобиль или услуга, бюджет и комментарий, время обращения и подтверждение согласия. Сведения нужны для ответа на обращение и обратного звонка.</p><h2>Тестовый режим</h2><p>Демоверсия для просмотра. Заявки не принимаются и не отправляются.</p><h2>Согласие</h2><p>Галочка в форме не установлена заранее. Отправляя тестовую заявку с установленной галочкой, вы соглашаетесь на указанную обработку для проверки работы формы. Версия текста: preview-2026-10-23.</p><a class="underlined-link" href="/rode-auto-demo/">Вернуться на сайт</a></section>`;
-}
 export function footer(company) {
   return `<footer class="site-footer"><div class="wrap"><div class="footer-top"><a class="footer-wordmark" href="/rode-auto-demo/">RODE AUTO</a><nav aria-label="Навигация в подвале"><a href="/rode-auto-demo/cars">Каталог</a><a href="/rode-auto-demo/services">Сервис</a><a href="/rode-auto-demo/about">О компании</a><a href="/rode-auto-demo/contacts">Контакты</a></nav><a href="${company.vkUrl}" ${external}>ВКонтакте</a></div><div class="footer-bottom"><span>© 2026 RODE AUTO</span><span>${e(company.legalName)} · ИНН ${e(company.inn)}</span><a href="/rode-auto-demo/privacy">Обработка данных</a><a href="/rode-auto-demo/credits">Материалы сайта</a><span>Омск, Енисейская, 18</span></div></div></footer>`;
 }
@@ -145,8 +144,11 @@ export function renderRoute(pathname, data) {
       '<section class="legal-page wrap"><p class="eyebrow">RODE AUTO</p><h1>Материалы сайта</h1><h2>3D-презентация BMW X1</h2><p>Использована модель «<a href="https://sketchfab.com/3d-models/bmw-x1-4fe53c88cd9442b4ac0496b6926b0fe2" target="_blank" rel="noopener noreferrer">BMW X1</a>», автор <a href="https://sketchfab.com/SLBofficial" target="_blank" rel="noopener noreferrer">Sloftm_Carz</a>, по лицензии <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer">CC BY 4.0</a>. Изменения: белый кузов, оптимизация геометрии для сайта и студийная постановка. Полотно и анимация подготовлены для RODE AUTO.</p><p>3D служит презентацией. Реальный автомобиль и его состояние показаны на фотографиях каталога.</p><a class="underlined-link" href="/rode-auto-demo/">Вернуться на сайт</a></section>';
     title = 'Материалы сайта — RODE AUTO';
   } else if (pathname === '/rode-auto-demo/privacy') {
-    body = privacy(data);
-    title = 'Обработка данных — локальный прототип RODE AUTO';
+    body = privacyPage(data.company, e);
+    title = 'Персональные данные — RODE AUTO';
+  } else if (pathname === '/rode-auto-demo/consent') {
+    body = consentPage(data.company, e);
+    title = 'Отдельное согласие — RODE AUTO';
   } else {
     body =
       '<section class="page-title wrap not-found"><p class="eyebrow">404</p><h1>ЗДЕСЬ ПОКА НЕТ ДОРОГИ.</h1><a class="button button-gold" href="/rode-auto-demo/cars">Вернуться в каталог</a></section>';
@@ -155,7 +157,7 @@ export function renderRoute(pathname, data) {
   return {
     html:
       header(data.company, pathname) +
-      `<main id="main" tabindex="-1">${body}${!['/rode-auto-demo/privacy', '/rode-auto-demo/credits'].includes(pathname) ? leadSection(data, car?.id) : ''}</main>` +
+      `<main id="main" tabindex="-1">${body}${!['/rode-auto-demo/privacy', '/rode-auto-demo/consent', '/rode-auto-demo/credits'].includes(pathname) ? leadSection(data, car?.id) : ''}</main>` +
       footer(data.company),
     title,
     light: false

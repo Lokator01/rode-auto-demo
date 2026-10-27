@@ -3,6 +3,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { RectAreaLightUniformsLib } from 'three/addons/lights/RectAreaLightUniformsLib.js';
+import { INTRO_HOLD_SECONDS, REVEAL_SECONDS, revealProgress, rotationStep } from './scene-motion.js';
 
 const smooth = (a, b, value) => THREE.MathUtils.smoothstep(value, a, b);
 
@@ -111,16 +112,16 @@ function headlightAccents(car) {
 export async function createCarScene(element, { onRevealComplete, onProgress, opened = false } = {}) {
   RectAreaLightUniformsLib.init();
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
-  const mobile = element.clientWidth < 500;
+  const mobile = window.matchMedia('(max-width: 767px), (pointer: coarse)').matches;
   const scene = new THREE.Scene();
   scene.fog = new THREE.FogExp2(0x030a07, 0.025);
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(devicePixelRatio, mobile ? 1.5 : 2));
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.setClearColor(0x030a07, 0);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 0.95;
-  renderer.shadowMap.enabled = true;
+  renderer.toneMappingExposure = 0.82;
+  renderer.shadowMap.enabled = !mobile;
   renderer.shadowMap.type = THREE.PCFShadowMap;
   renderer.shadowMap.autoUpdate = false;
   element.prepend(renderer.domElement);
@@ -149,7 +150,7 @@ export async function createCarScene(element, { onRevealComplete, onProgress, op
   const key = new THREE.SpotLight(0xfff3dc, 30, 25, 0.5, 0.8, 2);
   key.position.set(-4, 7, 5);
   key.target.position.set(0, 0.7, 0);
-  key.castShadow = true;
+  key.castShadow = !mobile;
   key.shadow.mapSize.set(mobile ? 1024 : 2048, mobile ? 1024 : 2048);
   key.shadow.bias = -0.0002;
   key.shadow.normalBias = 0.025;
@@ -162,11 +163,13 @@ export async function createCarScene(element, { onRevealComplete, onProgress, op
   fill.position.set(0, 5, 1);
   fill.lookAt(0, 0, 0);
   scene.add(hemi, key, key.target, second, second.target, rim, fill);
-  const beams = [
-    lightBeam(key.position.clone(), key.target.position.clone(), 0xdbe0d6),
-    lightBeam(second.position.clone(), second.target.position.clone(), 0xa1bcca)
-  ];
-  scene.add(...beams);
+  const beams = mobile
+    ? []
+    : [
+        lightBeam(key.position.clone(), key.target.position.clone(), 0xdbe0d6),
+        lightBeam(second.position.clone(), second.target.position.clone(), 0xa1bcca)
+      ];
+  if (beams.length) scene.add(...beams);
   const floor = new THREE.Mesh(
     new THREE.PlaneGeometry(40, 40),
     new THREE.ShadowMaterial({ color: 0x000000, opacity: 0.4 })
@@ -198,6 +201,29 @@ export async function createCarScene(element, { onRevealComplete, onProgress, op
   podium.add(base, top, lip);
   scene.add(podium);
 
+  // A soft contact patch avoids rendering the entire car into a mobile shadow map every frame.
+  const shadowCanvas = document.createElement('canvas');
+  shadowCanvas.width = shadowCanvas.height = 128;
+  const context = shadowCanvas.getContext('2d');
+  const gradient = context.createRadialGradient(64, 64, 8, 64, 64, 64);
+  gradient.addColorStop(0, 'rgba(0,0,0,.65)');
+  gradient.addColorStop(0.65, 'rgba(0,0,0,.3)');
+  gradient.addColorStop(1, 'rgba(0,0,0,0)');
+  context.fillStyle = gradient;
+  context.fillRect(0, 0, 128, 128);
+  const contactShadow = new THREE.Mesh(
+    new THREE.PlaneGeometry(3, 5),
+    new THREE.MeshBasicMaterial({
+      map: new THREE.CanvasTexture(shadowCanvas),
+      transparent: true,
+      depthWrite: false,
+      opacity: mobile ? 0.85 : 0.35
+    })
+  );
+  contactShadow.rotation.x = -Math.PI / 2;
+  contactShadow.position.y = 0.19;
+  scene.add(contactShadow);
+
   const progress = [0, 0];
   const report = (index) => (value) => {
     progress[index] = value;
@@ -207,8 +233,12 @@ export async function createCarScene(element, { onRevealComplete, onProgress, op
   let carAsset, clothAsset;
   try {
     [carAsset, clothAsset] = await Promise.all([
-      loadAsset(loader, '/rode-auto-demo/assets/models/bmw-x1-supplied-white.glb', report(0)),
-      loadAsset(loader, '/rode-auto-demo/assets/models/bmw-x1-rear-cover.glb', report(1))
+      loadAsset(
+        loader,
+        mobile ? '/rode-auto-demo/assets/models/bmw-x1-mobile-white.glb' : '/rode-auto-demo/assets/models/bmw-x1-supplied-white.glb',
+        report(0)
+      ),
+      loadAsset(loader, '/rode-auto-demo/assets/models/bmw-x1-open-front-cover.glb', report(1))
     ]);
   } catch (error) {
     controls.dispose();
@@ -233,6 +263,23 @@ export async function createCarScene(element, { onRevealComplete, onProgress, op
       if (!object.isMesh) return;
       object.castShadow = true;
       object.receiveShadow = true;
+      if (root === car) {
+        for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
+          if (material.name.includes('pearl white')) {
+            material.color.setRGB(0.62, 0.655, 0.69);
+            material.roughness = 0.31;
+            material.metalness = 0.18;
+            material.envMapIntensity = 0.65;
+            if ('clearcoat' in material) {
+              material.clearcoat = 0.32;
+              material.clearcoatRoughness = 0.25;
+            }
+          }
+          for (const texture of Object.values(material))
+            if (texture?.isTexture)
+              texture.anisotropy = Math.min(mobile ? 4 : 8, renderer.capabilities.getMaxAnisotropy());
+        }
+      }
       const position = object.geometry.attributes.position;
       const step = Math.max(1, Math.floor(position.count / 200));
       for (let index = 0; index < position.count; index += step)
@@ -275,11 +322,19 @@ export async function createCarScene(element, { onRevealComplete, onProgress, op
   let stageElapsed = 0;
   let disposed = false;
   let visible = true;
+  let active = true;
   let dirty = true;
   let frameId;
   let lastTime = performance.now();
+  let lastRenderTime = lastTime;
   let lightLevel = 0.15;
   let previousLightLevel = -1;
+  let automaticAngle = 0;
+  let manualAngle = 0;
+  let interacting = false;
+  let sinceInteraction = 4;
+  let shadowElapsed = 0;
+  element.dataset.modelQuality = mobile ? 'mobile' : 'desktop';
   function state(next) {
     mode = next;
     element.dataset.sceneState = next;
@@ -287,7 +342,9 @@ export async function createCarScene(element, { onRevealComplete, onProgress, op
     controls.enabled = next === 'interactive';
     status.textContent =
       next === 'interactive'
-        ? 'Потяните влево или вправо, чтобы осмотреть'
+        ? reduced.matches
+          ? 'Потяните влево или вправо, чтобы осмотреть'
+          : 'Медленное вращение · потяните, чтобы осмотреть'
         : next === 'revealing'
           ? 'Знакомство с BMW X1'
           : next === 'presenting'
@@ -298,19 +355,19 @@ export async function createCarScene(element, { onRevealComplete, onProgress, op
   function lighting(level) {
     if (Math.abs(level - previousLightLevel) < 0.00001) return;
     previousLightLevel = level;
-    scene.environmentIntensity = 0.18 + level * 0.48;
-    hemi.intensity = 0.15 + level * 0.65;
-    key.intensity = 30 + level * 180;
-    second.intensity = 15 + level * 150;
-    rim.intensity = 0.35 + level * 2.1;
-    fill.intensity = 0.4 + level * 2.6;
+    scene.environmentIntensity = 0.16 + level * 0.35;
+    hemi.intensity = 0.15 + level * 0.4;
+    key.intensity = 30 + level * 120;
+    second.intensity = 15 + level * 80;
+    rim.intensity = 0.35 + level * 1.15;
+    fill.intensity = 0.4 + level * 1.4;
     for (const beam of beams) beam.material.uniforms.strength.value = 0.12 + level * 0.88;
     headlights.opacity = smooth(0.6, 1, level) * 0.72;
     headlights.emissiveIntensity = smooth(0.6, 1, level) * 1.3;
     renderer.shadowMap.needsUpdate = true;
   }
-  function present(immediate = false) {
-    cloth.visible = false;
+  function present(immediate = false, continueCloth = false) {
+    cloth.visible = continueCloth && !immediate;
     car.visible = true;
     state(immediate ? 'interactive' : 'presenting');
     stageElapsed = 0;
@@ -320,7 +377,6 @@ export async function createCarScene(element, { onRevealComplete, onProgress, op
       lighting(1);
     }
   }
-  mixer.addEventListener('finished', () => present());
   function startIntro() {
     if (mode !== 'covered') return;
     if (opened || reduced.matches) {
@@ -328,9 +384,8 @@ export async function createCarScene(element, { onRevealComplete, onProgress, op
       return;
     }
     elapsed = 0;
-    reveal.reset().play();
     car.visible = true;
-    state('revealing');
+    state('waiting');
   }
   function resize() {
     if (!element.clientWidth || !element.clientHeight) return;
@@ -373,6 +428,7 @@ export async function createCarScene(element, { onRevealComplete, onProgress, op
   const keys = (event) => {
     if (!controls.enabled || !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;
     event.preventDefault();
+    sinceInteraction = 0;
     const spherical = new THREE.Spherical().setFromVector3(inputCamera.position.clone().sub(controls.target));
     spherical.theta += event.key === 'ArrowLeft' ? -0.12 : event.key === 'ArrowRight' ? 0.12 : 0;
     spherical.phi += event.key === 'ArrowUp' ? -0.04 : event.key === 'ArrowDown' ? 0.04 : 0;
@@ -391,7 +447,9 @@ export async function createCarScene(element, { onRevealComplete, onProgress, op
   reduced.addEventListener('change', motion);
   controls.addEventListener('change', () => {
     const orbit = new THREE.Spherical().setFromVector3(inputCamera.position.clone().sub(controls.target));
-    car.rotation.y = initialOrbit.theta - orbit.theta;
+    manualAngle = initialOrbit.theta - orbit.theta;
+    car.rotation.y = manualAngle + automaticAngle;
+    contactShadow.rotation.z = -car.rotation.y;
     camera.position.copy(
       new THREE.Vector3()
         .setFromSpherical(new THREE.Spherical(initialOrbit.radius, orbit.phi, initialOrbit.theta))
@@ -401,16 +459,45 @@ export async function createCarScene(element, { onRevealComplete, onProgress, op
     renderer.shadowMap.needsUpdate = true;
     dirty = true;
   });
+  controls.addEventListener('start', () => {
+    interacting = true;
+    sinceInteraction = 0;
+  });
+  controls.addEventListener('end', () => {
+    interacting = false;
+    sinceInteraction = 0;
+  });
   function animate(time) {
     if (disposed) return;
+    // A 120 Hz screen must not double the GPU load of this continuous presentation.
+    if (mobile && time - lastRenderTime < 1000 / 60 - 1) {
+      frameId = requestAnimationFrame(animate);
+      return;
+    }
+    lastRenderTime = time;
     const dt = Math.min((time - lastTime) / 1000, 0.08);
     lastTime = time;
-    if (visible && !document.hidden) {
-      controls.update();
-      if (mode === 'revealing') {
+    if (active && visible && !document.hidden) {
+      controls.update(dt);
+      if (mode === 'revealing' || ((mode === 'presenting' || mode === 'interactive') && cloth.visible)) {
         elapsed += dt;
-        mixer.update(dt);
-        lightLevel = 0.15 + smooth(0.1, clip.duration, elapsed) * 0.3;
+        element.dataset.revealProgress = revealProgress(elapsed).toFixed(1);
+        mixer.setTime(clip.duration * revealProgress(elapsed));
+        if (elapsed >= REVEAL_SECONDS) cloth.visible = false;
+        dirty = true;
+      }
+      if (mode === 'waiting') {
+        elapsed += dt;
+        if (elapsed >= INTRO_HOLD_SECONDS) {
+          elapsed = 0;
+          reveal.reset().play();
+          state('revealing');
+        }
+      } else if (mode === 'revealing') {
+        lightLevel = 0.15 + revealProgress(elapsed) * 0.3;
+        // At this pose the leading edge has cleared the rear bumper (z < -2.5).
+        // Start the layout immediately; the remaining folds keep receding in the dark.
+        if (revealProgress(elapsed) >= 0.5) present(false, true);
         dirty = true;
       } else if (mode === 'presenting') {
         stageElapsed += dt;
@@ -418,9 +505,23 @@ export async function createCarScene(element, { onRevealComplete, onProgress, op
         if (stageElapsed >= 1) state('interactive');
         dirty = true;
       }
+      if (mode === 'interactive' && !reduced.matches && !interacting) {
+        sinceInteraction += dt;
+        automaticAngle += rotationStep(dt, sinceInteraction);
+        car.rotation.y = manualAngle + automaticAngle;
+        contactShadow.rotation.z = -car.rotation.y;
+        dirty = true;
+        shadowElapsed += dt;
+        // Shadow updates are less frequent than the smooth visible rotation.
+        if (shadowElapsed >= 1 / 24) {
+          renderer.shadowMap.needsUpdate = true;
+          shadowElapsed = 0;
+        }
+      }
       if (dirty) {
         lighting(lightLevel);
         renderer.render(scene, camera);
+        element.dataset.rotation = car.rotation.y.toFixed(4);
         dirty = false;
       }
     }
@@ -436,13 +537,26 @@ export async function createCarScene(element, { onRevealComplete, onProgress, op
   renderer.render(scene, camera);
   renderer.setRenderTarget(null);
   target.dispose();
-  car.visible = false;
+  car.visible = true;
   element.querySelector('.scene-loading')?.remove();
   onProgress?.(1);
   lastTime = performance.now();
   frameId = requestAnimationFrame(animate);
   return {
     startIntro,
+    openImmediately() {
+      reveal.stop();
+      present(true);
+    },
+    setActive(value) {
+      active = value;
+      if (value) {
+        visible = true;
+        lastTime = performance.now();
+        resize();
+        dirty = true;
+      }
+    },
     dispose() {
       disposed = true;
       cancelAnimationFrame(frameId);

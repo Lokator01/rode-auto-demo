@@ -539,6 +539,48 @@ textarea:focus-visible,
   padding-left: 13px;
   position: relative;
 }
+.hero-features .feature-typing-space {
+  visibility: hidden;
+  display: block;
+}
+.hero-intro.is-typewriter {
+  position: relative;
+}
+.typewriter-readable {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.hero-intro .feature-typing-space {
+  visibility: hidden;
+  display: block;
+}
+.hero-intro .feature-typing-space + span {
+  position: absolute;
+  inset: 0;
+}
+.hero-features .feature-typing-space + span {
+  position: absolute;
+  top: 0;
+  left: 13px;
+  right: 0;
+}
+.hero-features .is-typing-pending::before {
+  opacity: 0;
+}
+.hero-features .is-typing-active .feature-typing-space + span::after {
+  content: '';
+  display: inline-block;
+  width: 1px;
+  height: 1em;
+  background: var(--gold);
+  margin-left: 2px;
+  vertical-align: -0.12em;
+  opacity: 0.65;
+}
 .hero-features li::before {
   content: '';
   width: 3px;

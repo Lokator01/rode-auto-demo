@@ -10,6 +10,7 @@ import {
   introLoader
 } from './render.js';
 let loaderDismissTimer;
+history.scrollRestoration = 'manual';
 const data = await fetch('/rode-auto-demo/content/catalog.json')
   .then((response) => {
     if (!response.ok) throw new Error('Каталог недоступен');
@@ -28,7 +29,11 @@ let galleryIndex = 0;
 let sceneController;
 let sceneGeneration = 0;
 let pointerStart;
-let introPlayed = false;
+// In-memory visit state: switching cars/routes keeps the reveal consumed; a new page load resets it.
+let introStarted = false;
+let bmwVisual;
+let sceneElement;
+let cancelFeatureTyping = () => {};
 function dismissLoader() {
   clearTimeout(loaderDismissTimer);
   document.documentElement.classList.remove('intro-loading');
@@ -62,31 +67,47 @@ function loadingProgress(fraction) {
 
 async function mountScene() {
   const generation = ++sceneGeneration;
-  sceneController?.dispose();
-  sceneController = null;
   const element = document.querySelector('#car-scene');
   if (!element) {
+    sceneController?.setActive(false);
     dismissLoader();
     return;
   }
-  if (!introPlayed) showLoader();
+  if (sceneController && element === sceneElement) {
+    dismissLoader();
+    sceneController.setActive(true);
+    sceneController.openImmediately();
+    return;
+  }
+  const playIntro = !introStarted;
+  if (playIntro) showLoader();
+  else dismissLoader();
+  sceneController?.dispose();
+  sceneController = null;
   try {
     const { createCarScene } = await import('./scene.js');
     if (generation !== sceneGeneration || !element.isConnected) return;
     const controller = await createCarScene(element, {
-      opened: introPlayed,
+      opened: !playIntro,
       onProgress: loadingProgress,
       onRevealComplete: () => {
         if (generation !== sceneGeneration || !element.isConnected) return;
-        introPlayed = true;
-        if (!heroExpanded) expandHero(true, false);
+        if (!heroExpanded) expandHero(true, false, playIntro);
       }
     });
     if (generation !== sceneGeneration || !element.isConnected) controller.dispose();
     else {
       sceneController = controller;
+      sceneElement = element;
+      bmwVisual = element.closest('.hero-visual');
+      introStarted = true;
       dismissLoader();
-      controller.startIntro();
+      setTimeout(
+        () => {
+          if (generation === sceneGeneration && element.isConnected) controller.startIntro();
+        },
+        reducedMotion.matches || !playIntro ? 0 : 450
+      );
     }
   } catch (error) {
     if (element.isConnected) {
@@ -102,17 +123,21 @@ async function mountScene() {
   }
 }
 function navigate(url, push = true) {
+  cancelFeatureTyping();
   dismissLoader();
-  introPlayed = false;
   sceneGeneration++;
-  sceneController?.dispose();
-  sceneController = null;
+  sceneController?.setActive(false);
   const route = renderRoute(url.pathname, data);
   if (push) history.pushState({}, '', url.pathname);
   document.querySelector('#app').innerHTML = route.html;
   document.title = route.title;
   heroIndex = 0;
-  heroExpanded = false;
+  heroExpanded = introStarted;
+  const hero = document.querySelector('#hero');
+  if (hero && introStarted) {
+    hero.innerHTML = heroContent(data, 0, true);
+    if (bmwVisual) hero.querySelector('.hero-visual').replaceWith(bmwVisual);
+  }
   galleryIndex = 0;
   contactDialog.close();
   photoDialog.close();
@@ -121,10 +146,13 @@ function navigate(url, push = true) {
   mountScene();
 }
 function selectCar(index) {
+  cancelFeatureTyping();
   heroIndex = (index + data.cars.length) % data.cars.length;
+  if (heroIndex === 0) heroExpanded = introStarted;
   const hero = document.querySelector('#hero');
   const scroll = hero.querySelector('.selector-track').scrollLeft;
   hero.innerHTML = heroContent(data, heroIndex, heroExpanded);
+  if (heroIndex === 0 && bmwVisual) hero.querySelector('.hero-visual').replaceWith(bmwVisual);
   const track = hero.querySelector('.selector-track');
   track.scrollLeft = scroll;
   const active = track.querySelector('.is-active');
@@ -133,7 +161,8 @@ function selectCar(index) {
     track.scrollTo({ left, behavior: reducedMotion.matches ? 'instant' : 'smooth' });
   mountScene();
 }
-function expandHero(expanded = !heroExpanded, focus = true) {
+function expandHero(expanded = !heroExpanded, focus = true, typeFeatures = false) {
+  cancelFeatureTyping();
   const stage = document.querySelector('.hero-stage');
   if (!stage) return;
   const panels = [stage.querySelector('.hero-visual'), stage.querySelector('.hero-copy')];
@@ -142,6 +171,11 @@ function expandHero(expanded = !heroExpanded, focus = true) {
   heroExpanded = expanded;
   stage.classList.toggle('is-expanded', heroExpanded);
   panels[1].innerHTML = heroCopy(data, heroIndex, heroExpanded);
+  if (expanded && typeFeatures && !reducedMotion.matches) cancelFeatureTyping = typeHeroCopy(panels[1]);
+  if (expanded && typeFeatures && !reducedMotion.matches) {
+    for (const block of panels[1].querySelectorAll('.hero-description'))
+      block.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 900, easing: 'ease-out' });
+  }
   if (!reducedMotion.matches)
     panels.forEach((panel, index) => {
       const after = panel.getBoundingClientRect();
@@ -159,6 +193,92 @@ function expandHero(expanded = !heroExpanded, focus = true) {
 
   if (focus) stage.querySelector('[data-hero-expand]')?.focus({ preventScroll: true });
 }
+
+function typeHeroCopy(copy) {
+  const items = [...copy.querySelectorAll('.hero-intro, .hero-features li')];
+  if (!items.length) return () => {};
+  const texts = items.map((item) => item.textContent);
+  const summary = copy.querySelector('.hero-description summary');
+  let pulse;
+  const stopPulse = () => {
+    pulse?.cancel();
+    summary?.classList.remove('is-attention');
+  };
+  const spans = items.map((item, index) => {
+    if (item.matches('li')) item.setAttribute('aria-label', texts[index]);
+    item.classList.add('is-typing-pending', 'is-typewriter');
+    const span = document.createElement('span');
+    span.setAttribute('aria-hidden', 'true');
+    // Hidden final text reserves each row's width and height throughout typing.
+    const space = document.createElement('span');
+    space.className = 'feature-typing-space';
+    space.setAttribute('aria-hidden', 'true');
+    space.textContent = texts[index];
+    item.replaceChildren(space, span);
+    if (item.matches('.hero-intro')) {
+      const readable = document.createElement('span');
+      readable.className = 'typewriter-readable';
+      readable.textContent = texts[index];
+      item.append(readable);
+    }
+    return span;
+  });
+  let frame;
+  let start;
+  function tick(time) {
+    start ??= time;
+    let elapsed = time - start - 250;
+    let complete = true;
+    items.forEach((item, index) => {
+      const speed = items[index].matches('.hero-intro') ? 25 : 38;
+      const duration = texts[index].length * speed;
+      const count = Math.max(0, Math.min(texts[index].length, Math.floor(elapsed / speed)));
+      spans[index].textContent = texts[index].slice(0, count);
+      item.classList.toggle('is-typing-pending', count === 0);
+      item.classList.toggle('is-typing-active', count > 0 && count < texts[index].length);
+      if (count < texts[index].length) complete = false;
+      elapsed -= duration + 160;
+    });
+    if (!complete && copy.isConnected && !reducedMotion.matches) frame = requestAnimationFrame(tick);
+    else finish(complete);
+  }
+  function finish(completed = false) {
+    cancelAnimationFrame(frame);
+    stopPulse();
+    summary?.removeEventListener('click', stopPulse);
+    summary?.removeEventListener('focus', stopPulse);
+    summary?.removeEventListener('pointerenter', stopPulse);
+    items.forEach((item, index) => {
+      item.classList.remove('is-typing-pending', 'is-typing-active', 'is-typewriter');
+      item.textContent = texts[index];
+    });
+    if (completed && summary && copy.isConnected && !reducedMotion.matches && !summary.parentElement.open) {
+      pulse = summary.animate(
+        [
+          { color: 'var(--gold)', backgroundColor: 'rgba(197,164,106,0)', textShadow: '0 0 0 rgba(232,193,110,0)' },
+          {
+            color: '#f2ce83',
+            backgroundColor: 'rgba(197,164,106,.09)',
+            textShadow: '0 0 12px rgba(232,193,110,.35)',
+            offset: 0.5
+          },
+          { color: 'var(--gold)', backgroundColor: 'rgba(197,164,106,0)', textShadow: '0 0 0 rgba(232,193,110,0)' }
+        ],
+        { duration: 1400, iterations: 2, easing: 'ease-in-out' }
+      );
+      summary.classList.add('is-attention');
+      pulse.onfinish = () => summary.classList.remove('is-attention');
+      summary.addEventListener('click', stopPulse);
+      summary.addEventListener('focus', stopPulse);
+      summary.addEventListener('pointerenter', stopPulse);
+    }
+  }
+  frame = requestAnimationFrame(tick);
+  return () => finish(false);
+}
+reducedMotion.addEventListener('change', () => {
+  if (reducedMotion.matches) cancelFeatureTyping();
+});
 function enquire(id, trigger) {
   const item = [...data.cars, ...data.services].find((entry) => entry.id === id);
   contactDialog.innerHTML =
@@ -336,4 +456,8 @@ for (const dialog of [contactDialog, photoDialog])
       dialog.close();
   });
 window.addEventListener('popstate', () => navigate(new URL(location.href), false));
+window.addEventListener('pageshow', (event) => {
+  if (event.persisted && location.pathname === '/rode-auto-demo/') navigate(new URL(location.href), false);
+});
+if (document.querySelector('#car-scene') && !location.hash) window.scrollTo({ top: 0, behavior: 'instant' });
 mountScene();
