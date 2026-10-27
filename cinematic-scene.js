@@ -3,7 +3,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { RectAreaLightUniformsLib } from 'three/addons/lights/RectAreaLightUniformsLib.js';
-import { INTRO_HOLD_SECONDS, REVEAL_SECONDS, revealProgress, rotationStep } from './scene-motion.js?v=897f95dd6966';
+import { INTRO_HOLD_SECONDS, REVEAL_SECONDS, revealProgress, rotationStep } from './scene-motion.js?v=63a9c8190f42';
 
 const smooth = (a, b, value) => THREE.MathUtils.smoothstep(value, a, b);
 
@@ -235,7 +235,7 @@ export async function createCarScene(element, { onRevealComplete, onProgress, op
     [carAsset, clothAsset] = await Promise.all([
       loadAsset(
         loader,
-        mobile ? '/rode-auto-demo/assets/models/bmw-x1-mobile-white.glb' : '/rode-auto-demo/assets/models/bmw-x1-supplied-white.glb',
+        mobile ? '/rode-auto-demo/assets/models/bmw-x1-mobile-refined.glb' : '/rode-auto-demo/assets/models/bmw-x1-supplied-white.glb',
         report(0)
       ),
       loadAsset(loader, '/rode-auto-demo/assets/models/bmw-x1-open-front-cover.glb', report(1))

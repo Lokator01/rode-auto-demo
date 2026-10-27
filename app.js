@@ -8,7 +8,7 @@ import {
   escapeHtml,
   money,
   introLoader
-} from './render.js?v=897f95dd6966';
+} from './render.js?v=63a9c8190f42';
 let loaderDismissTimer;
 history.scrollRestoration = 'manual';
 const data = await fetch('/rode-auto-demo/content/catalog.json')
@@ -34,6 +34,18 @@ let introStarted = false;
 let bmwVisual;
 let sceneElement;
 let cancelFeatureTyping = () => {};
+let cancelReadingScroll = () => {};
+let visitorControlsScroll = false;
+function takeScrollControl() {
+  visitorControlsScroll = true;
+  cancelReadingScroll();
+}
+window.addEventListener('touchstart', takeScrollControl, { passive: true });
+window.addEventListener('wheel', takeScrollControl, { passive: true });
+window.addEventListener('pointerdown', takeScrollControl, { passive: true });
+window.addEventListener('keydown', (event) => {
+  if (['ArrowDown', 'ArrowUp', 'PageDown', 'PageUp', 'Home', 'End', ' '].includes(event.key)) takeScrollControl();
+});
 function dismissLoader() {
   clearTimeout(loaderDismissTimer);
   document.documentElement.classList.remove('intro-loading');
@@ -85,7 +97,7 @@ async function mountScene() {
   sceneController?.dispose();
   sceneController = null;
   try {
-    const { createCarScene } = await import('./scene.js?v=897f95dd6966');
+    const { createCarScene } = await import('./scene.js?v=63a9c8190f42');
     if (generation !== sceneGeneration || !element.isConnected) return;
     const controller = await createCarScene(element, {
       opened: !playIntro,
@@ -123,6 +135,7 @@ async function mountScene() {
   }
 }
 function navigate(url, push = true) {
+  cancelReadingScroll();
   cancelFeatureTyping();
   dismissLoader();
   sceneGeneration++;
@@ -146,6 +159,7 @@ function navigate(url, push = true) {
   mountScene();
 }
 function selectCar(index) {
+  cancelReadingScroll();
   cancelFeatureTyping();
   heroIndex = (index + data.cars.length) % data.cars.length;
   if (heroIndex === 0) heroExpanded = introStarted;
@@ -171,7 +185,10 @@ function expandHero(expanded = !heroExpanded, focus = true, typeFeatures = false
   heroExpanded = expanded;
   stage.classList.toggle('is-expanded', heroExpanded);
   panels[1].innerHTML = heroCopy(data, heroIndex, heroExpanded);
-  if (expanded && typeFeatures && !reducedMotion.matches) cancelFeatureTyping = typeHeroCopy(panels[1]);
+  if (expanded && typeFeatures && !reducedMotion.matches) {
+    const assisted = assistMobileReading(panels[1]);
+    cancelFeatureTyping = typeHeroCopy(panels[1], assisted ? 1150 : 250);
+  }
   if (expanded && typeFeatures && !reducedMotion.matches) {
     for (const block of panels[1].querySelectorAll('.hero-description'))
       block.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 900, easing: 'ease-out' });
@@ -194,7 +211,31 @@ function expandHero(expanded = !heroExpanded, focus = true, typeFeatures = false
   if (focus) stage.querySelector('[data-hero-expand]')?.focus({ preventScroll: true });
 }
 
-function typeHeroCopy(copy) {
+function assistMobileReading(copy) {
+  if (!window.matchMedia('(max-width: 767px)').matches || visitorControlsScroll || reducedMotion.matches) return false;
+  const heading = copy.querySelector('h1');
+  const target = Math.max(0, window.scrollY + heading.getBoundingClientRect().top - 105);
+  const from = window.scrollY;
+  if (target <= from + 60) return false;
+  let frame;
+  let start;
+  let cancelled = false;
+  cancelReadingScroll = () => {
+    cancelled = true;
+    cancelAnimationFrame(frame);
+  };
+  function move(time) {
+    if (cancelled || !copy.isConnected || reducedMotion.matches) return;
+    start ??= time;
+    const t = Math.min(1, (time - start) / 950);
+    window.scrollTo({ top: from + (target - from) * (t * t * (3 - 2 * t)), behavior: 'instant' });
+    if (t < 1) frame = requestAnimationFrame(move);
+  }
+  frame = requestAnimationFrame(move);
+  return true;
+}
+
+function typeHeroCopy(copy, initialDelay = 250) {
   const items = [...copy.querySelectorAll('.hero-intro, .hero-features li')];
   if (!items.length) return () => {};
   const texts = items.map((item) => item.textContent);
@@ -227,7 +268,7 @@ function typeHeroCopy(copy) {
   let start;
   function tick(time) {
     start ??= time;
-    let elapsed = time - start - 250;
+    let elapsed = time - start - initialDelay;
     let complete = true;
     items.forEach((item, index) => {
       const speed = items[index].matches('.hero-intro') ? 25 : 38;
@@ -341,7 +382,11 @@ document.addEventListener('click', (event) => {
   const target = event.target.closest('button,a');
   if (!target) return;
   if (target.matches('[data-close]')) target.closest('dialog').close();
-  else if (target.matches('.menu-toggle')) {
+  else if (target.matches('[data-back-to-top]')) {
+    takeScrollControl();
+    window.scrollTo({ top: 0, behavior: reducedMotion.matches ? 'instant' : 'smooth' });
+    document.querySelector('.brand')?.focus({ preventScroll: true });
+  } else if (target.matches('.menu-toggle')) {
     const expanded = target.getAttribute('aria-expanded') !== 'true';
     target.setAttribute('aria-expanded', String(expanded));
     target.setAttribute('aria-label', expanded ? 'Закрыть меню' : 'Открыть меню');
@@ -440,7 +485,8 @@ document.addEventListener('submit', async (event) => {
   const form = event.target.closest('[data-lead-form]');
   if (!form) return;
   event.preventDefault();
-  form.querySelector('.form-status').textContent = "Демоверсия для просмотра. Заявки не принимаются и не отправляются.";
+  if (!form.reportValidity()) return;
+  form.querySelector('.form-status').textContent = "Отправка заявки пока не подключена. Для связи позвоните по номеру в шапке сайта.";
 });
 
 for (const dialog of [contactDialog, photoDialog])
