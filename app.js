@@ -8,7 +8,7 @@ import {
   escapeHtml,
   money,
   introLoader
-} from './render.js';
+} from './render.js?v=897f95dd6966';
 let loaderDismissTimer;
 history.scrollRestoration = 'manual';
 const data = await fetch('/rode-auto-demo/content/catalog.json')
@@ -85,7 +85,7 @@ async function mountScene() {
   sceneController?.dispose();
   sceneController = null;
   try {
-    const { createCarScene } = await import('./scene.js');
+    const { createCarScene } = await import('./scene.js?v=897f95dd6966');
     if (generation !== sceneGeneration || !element.isConnected) return;
     const controller = await createCarScene(element, {
       opened: !playIntro,
